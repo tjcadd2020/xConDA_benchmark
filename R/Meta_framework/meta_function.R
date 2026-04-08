@@ -1,5 +1,87 @@
-
-####由于多队列的不同设置对部分差异分析方法的函数在这里进行了一些调整
+#####prevalence筛选函数
+filter_by_prevalence <- function(matrix, prevalence) {
+  # 计算每列的非零比例
+  nonzero_proportion <- colSums(matrix != 0) / nrow(matrix)
+  
+  # 筛选出非零比例大于 prevalence 的列
+  filtered_matrix <- matrix[, which(nonzero_proportion > prevalence), drop = FALSE]
+  
+  # 返回筛选后的矩阵
+  return(filtered_matrix)
+}
+#####方法运行函数
+#CLR标准化函数
+library(compositions)
+clr_transform<-function(data){
+  #要求输入行是样本，列是特征,count
+  data_clr <- data.frame(t(compositions::clr(t(data))))
+  return(data_clr)
+}
+#CSS标准化函数
+library(metagenomeSeq)
+css_transform<-function(data,log_transform=TRUE){
+  #要求输入行是样本，列是特征,count
+  metaSeqObject = newMRexperiment(t(data))
+  metaSeqObject_CSS <- cumNorm( metaSeqObject , p=cumNormStatFast(metaSeqObject) )
+  data_CSS = data.frame(t(data.frame(MRcounts(metaSeqObject_CSS, norm=TRUE, log=log_transform))))
+  #确定是否返回log转换的数据
+  return(data_CSS)
+}
+#TMM标准化函数
+TMM_transform <- function(features) {
+  #输入列是特征，行是样本，count
+  # Convert to Matrix from Data Frame
+  features_norm = as.matrix(features)
+  dd <- colnames(features_norm)
+  
+  # TMM Normalizing the Data
+  X <- t(features_norm)
+  
+  libSize = edgeR::calcNormFactors(X, method = "TMM")
+  eff.lib.size = colSums(X) * libSize
+  
+  ref.lib.size = mean(eff.lib.size)
+  #Use the mean of the effective library sizes as a reference library size
+  X.output = sweep(X, MARGIN = 2, eff.lib.size, "/") * ref.lib.size
+  #Normalized read counts
+  
+  # Convert back to data frame
+  features_TMM <- as.data.frame(t(X.output))
+  
+  # Rename the True Positive Features - Same Format as Before
+  colnames(features_TMM) <- dd
+  
+  
+  # Return as list
+  return(features_TMM)
+}
+##log转换函数
+LOG_transform <- function(x) {
+  y <- replace(x, x == 0, min(x[x>0]) / 2)
+  return(data.frame(log2(y)))
+}
+##输出指定的标准化数据函数
+data_normalization <- function(simulated_data_all,normalization){
+  if(normalization == 'CLR'){
+    normalized_data<-clr_transform(simulated_data_all$simulated_data_abs)
+  }
+  if(normalization == 'TMM'){
+    normalized_data<-TMM_transform(simulated_data_all$simulated_data_abs)
+  }
+  if(normalization == 'CSS'){
+    normalized_data<-css_transform(simulated_data_all$simulated_data_abs)
+  }
+  if(normalization == 'LOG'){
+    normalized_data<-LOG_transform(simulated_data_all$simulated_data_abs)
+  }
+  if(normalization == 'count'){
+    normalized_data<-simulated_data_all$simulated_data_abs
+  }
+  if(normalization == 'TSS'){
+    normalized_data<-simulated_data_all$simulated_data_rela
+  }
+  return(normalized_data)
+}
 #对协变量部分进行更改，因为目前筛选协变量已经包含在metadata中
 fastANCOM_analysis<-function(simulated_data_all,covariates=NULL,categorical_variable_name = NULL,normalization){
   ###covariates以向量形式输入
@@ -146,9 +228,9 @@ edgeR_analysis<-function(simulated_data_all,covariates = NULL,normalization){
   formula_str <- paste0('~ ',covariates)
   Group  <- factor(simulated_data_all$metadata$Group)
   y <- DGEList(counts=t(simulated_data),group=Group)
-  
   design <- model.matrix(as.formula(formula_str),data = simulated_data_all$metadata)
   y <- estimateDisp(y,design)
+  
   fit <- glmQLFit(y,design)
   qlf <- glmQLFTest(fit,coef = 2)
   edgeR_res <- topTags(qlf,n = ncol(simulated_data))
@@ -299,6 +381,134 @@ Maaslin2_LM_analysis<-function(simulated_data_all,covariates=NULL,categorical_va
   colnames(maa_lm_res)[8] <- 'p.adj.val'
   return(maa_lm_res)
 }
+Maaslin2_NEGBIN_analysis<-function(simulated_data_all,covariates=NULL,categorical_variable_name = NULL,normalization,transform){
+  covariates <- append(covariates,"Group")
+  random_effect_variable <- NULL
+  if('subject_id' %in% categorical_variable_name){
+    random_effect_variable = 'subject_id'
+  }
+  reference = NULL
+  if(setequal(categorical_variable_name,NULL)){}else{
+    for(i in 1:length(categorical_variable_name)){
+      simulated_data_all$metadata[[categorical_variable_name[i]]] <- as.numeric(as.factor(simulated_data_all$metadata[[categorical_variable_name[i]]]))
+      if(length(unique(simulated_data_all$metadata[[categorical_variable_name[i]]])) > 2){
+        reference <- c(reference,paste(categorical_variable_name[i],unique(simulated_data_all$metadata[[categorical_variable_name[i]]])[1],sep=','))
+      }
+      
+    }
+  }
+  library(Maaslin2)
+  meta <- simulated_data_all$metadata
+  data <- simulated_data_all$simulated_data_abs
+  filename <- "data_maaslin2_negbin"
+  rownames(meta)<-meta$Sample
+  fit_data = Maaslin2(
+    input_data = data, 
+    input_metadata = meta, 
+    min_prevalence = 0,reference = reference,
+    normalization = normalization,analysis_method = "NEGBIN",
+    output = filename,transform = transform,plot_heatmap = FALSE,plot_scatter = FALSE,
+    fixed_effects = covariates,
+    random_effects = random_effect_variable)
+  maa_lm_res<-fit_data$results
+  colnames(maa_lm_res)[1] <- 'Feature'
+  colnames(maa_lm_res)[8] <- 'p.adj.val'
+  return(maa_lm_res)
+}
+Maaslin2_ZINB_analysis<-function(simulated_data_all,covariates=NULL,categorical_variable_name = NULL,normalization,transform){
+  covariates <- append(covariates,"Group")
+  random_effect_variable <- NULL
+  if('subject_id' %in% categorical_variable_name){
+    random_effect_variable = 'subject_id'
+  }
+  reference = NULL
+  if(setequal(categorical_variable_name,NULL)){}else{
+    for(i in 1:length(categorical_variable_name)){
+      simulated_data_all$metadata[[categorical_variable_name[i]]] <- as.numeric(as.factor(simulated_data_all$metadata[[categorical_variable_name[i]]]))
+      if(length(unique(simulated_data_all$metadata[[categorical_variable_name[i]]])) > 2){
+        reference <- c(reference,paste(categorical_variable_name[i],unique(simulated_data_all$metadata[[categorical_variable_name[i]]])[1],sep=','))
+      }
+      
+    }
+  }
+  library(Maaslin2)
+  meta <- simulated_data_all$metadata
+  data <- simulated_data_all$simulated_data_abs
+  filename <- "data_maaslin2_zinb"
+  rownames(meta)<-meta$Sample
+  fit_data = Maaslin2(
+    input_data = data, 
+    input_metadata = meta, 
+    min_prevalence = 0,reference = reference,
+    normalization = normalization,analysis_method = "ZINB",
+    output = filename,transform = transform,plot_heatmap = FALSE,plot_scatter = FALSE,
+    fixed_effects = covariates,
+    random_effects = random_effect_variable)
+  maa_lm_res<-fit_data$results
+  colnames(maa_lm_res)[1] <- 'Feature'
+  colnames(maa_lm_res)[8] <- 'p.adj.val'
+  return(maa_lm_res)
+}
+DESeq2_analysis<-function(simulated_data_all,covariates=NULL,normalization){
+  
+  simulated_data <- data_normalization(simulated_data_all,normalization = normalization)
+  col_names <- covariates
+  covariates <- c("Group",covariates)
+  if(length(covariates)>1){
+    covariates <- paste(covariates,collapse = ' + ')
+  }
+  formula_str <- paste0('~ ',covariates)
+  library(DESeq2)
+  library(dplyr)
+  simulated_data_all$metadata$Group <- as.factor(simulated_data_all$metadata$Group)
+  #simulated_data_all$metadata <- simulated_data_all$metadata %>%
+  #mutate(across(contains("Ca"), as.factor))
+  dds <- DESeqDataSetFromMatrix(countData=t(simulated_data) + 1, 
+                                colData=simulated_data_all$metadata, 
+                                design=as.formula(formula_str), tidy = FALSE)
+  
+  dds <- DESeq(dds)
+  
+  DESeq2_res <- data.frame(results(dds,contrast = c('Group',1,0)))
+  DESeq2_res$Feature <- rownames(DESeq2_res)
+  colnames(DESeq2_res)[which(colnames(DESeq2_res)=='padj')] <- 'p.adj.val'
+  #head(results(dds,contrast = c('Group',1,0)))
+  return(DESeq2_res)
+}
+Maaslin2_CPLM_analysis<-function(simulated_data_all,covariates=NULL,categorical_variable_name = NULL,normalization,transform){
+  covariates <- append(covariates,"Group")
+  random_effect_variable <- NULL
+  if('subject_id' %in% categorical_variable_name){
+    random_effect_variable = 'subject_id'
+  }
+  reference = NULL
+  if(setequal(categorical_variable_name,NULL)){}else{
+    for(i in 1:length(categorical_variable_name)){
+      simulated_data_all$metadata[[categorical_variable_name[i]]] <- as.numeric(as.factor(simulated_data_all$metadata[[categorical_variable_name[i]]]))
+      if(length(unique(simulated_data_all$metadata[[categorical_variable_name[i]]])) > 2){
+        reference <- c(reference,paste(categorical_variable_name[i],unique(simulated_data_all$metadata[[categorical_variable_name[i]]])[1],sep=','))
+      }
+      
+    }
+  }
+  library(Maaslin2)
+  meta <- simulated_data_all$metadata
+  data <- simulated_data_all$simulated_data_abs
+  filename <- "data_maaslin2_cplm"
+  rownames(meta)<-meta$Sample
+  fit_data = Maaslin2(
+    input_data = data, 
+    input_metadata = meta, 
+    min_prevalence = 0,reference = reference,
+    normalization = normalization,analysis_method = "CPLM",
+    output = filename,transform = transform,plot_heatmap = FALSE,plot_scatter = FALSE,
+    fixed_effects = covariates,
+    random_effects = random_effect_variable)
+  maa_lm_res<-fit_data$results
+  colnames(maa_lm_res)[1] <- 'Feature'
+  colnames(maa_lm_res)[8] <- 'p.adj.val'
+  return(maa_lm_res)
+}
 ###meta函数
 library(metap)
 meta_combine_p <- function(result_list, sample_size,method='Stouffer') {
@@ -391,35 +601,70 @@ meta_combine<-function(effect_merge_data,se_merge_data,cohort_num,
   rownames(result)<- rownames(effect_merge_data)
   for(feature in rownames(effect_merge_data)){
     #print(feature)
-    rma_fit <-metafor::rma.uni(yi = unlist(c(effect_merge_data[feature,ind_feature[feature,]])),
-                               sei = unlist(c(se_merge_data[feature,ind_feature[feature,]])),
-                               method=method_type,verbose = F,
-                               control = list(threshold = rma_conv,
-                                              maxiter = rma_maxit))
+    yi_now  <- unlist(c(effect_merge_data[feature, ind_feature[feature, ]]))
+    sei_now <- unlist(c(se_merge_data[feature, ind_feature[feature, ]]))
     
-    wts <- metafor::weights.rma.uni(rma_fit)
-    names(wts) <- colnames(effect_merge_data)[ind_feature[feature,]]
-    result[feature, c("coef",
-                      "stderr",
-                      "pval",
-                      "k",
-                      "tau2",
-                      "stderr.tau2",
-                      "pval.tau2",
-                      "I2",
-                      "H2",
-                      paste0("weight_",
-                             names(wts))
-    )] <- c(unlist(rma_fit[c("beta",
-                             "se",
-                             "pval",
-                             "k",
-                             "tau2",
-                             "se.tau2",
-                             "QEp",
-                             "I2",
-                             "H2")]),
-            wts)
+    all_names <- colnames(effect_merge_data)[ind_feature[feature, ]]
+    
+    valid_idx <- which(
+      is.finite(yi_now) & !is.na(yi_now) &
+        is.finite(sei_now) & !is.na(sei_now) &
+        sei_now > 0
+    )
+    
+    rma_fit <- NULL
+    
+    if (length(valid_idx) >= 2) {
+      yi_use   <- yi_now[valid_idx]
+      sei_use  <- sei_now[valid_idx]
+      name_use <- all_names[valid_idx]
+      
+      rma_fit <- tryCatch(
+        metafor::rma.uni(
+          yi      = yi_use,
+          sei     = sei_use,
+          slab    = name_use,
+          method  = method_type,
+          verbose = FALSE,
+          control = list(
+            threshold = rma_conv,
+            stepadj   = 0.5,
+            tau2.max  = 1e6,
+            maxiter   = rma_maxit
+          )
+        ),
+        error = function(e) NULL
+      )
+    }
+    
+    if (!is.null(rma_fit)) {
+      wts <- metafor::weights.rma.uni(rma_fit)
+      
+      ## 优先使用模型对象自身保存的标签
+      if (!is.null(rma_fit$slab) && length(rma_fit$slab) == length(wts)) {
+        names(wts) <- rma_fit$slab
+      }
+      
+      result[feature, c("coef",
+                        "stderr",
+                        "pval",
+                        "k",
+                        "tau2",
+                        "stderr.tau2",
+                        "pval.tau2",
+                        "I2",
+                        "H2")] <- unlist(rma_fit[c("beta",
+                                                   "se",
+                                                   "pval",
+                                                   "k",
+                                                   "tau2",
+                                                   "se.tau2",
+                                                   "QEp",
+                                                   "I2",
+                                                   "H2")])
+      
+      result[feature, paste0("weight_", names(wts))] <- wts
+    }
   }
   result$Bonferroni_pval<-p.adjust(result$pval, method = "bonf")
   result$BH_pval<-p.adjust(result$pval, method = "BH")
@@ -427,81 +672,554 @@ meta_combine<-function(effect_merge_data,se_merge_data,cohort_num,
   colnames(result)[1]<-"Feature"
   return(result)
 }
+safe_intersect_or_null <- function(target, candidates) {
+  if (length(candidates) == 0) return(NULL)
+  res <- intersect(target, candidates)
+  if (length(res) == 0) return(NULL)
+  return(res)
+}
+remove_low_feature_samples <- function(mat, verbose = TRUE) {
+  # 每一行中非零元素的个数
+  non_zero_count <- rowSums(mat != 0)
+  
+  # 保留非零特征数 ≥ 2 的样本
+  keep_idx <- non_zero_count >= 2
+  
+  if (verbose) {
+    removed <- sum(!keep_idx)
+    message(removed, " samples removed with fewer than 2 non-zero features.")
+  }
+  
+  mat[keep_idx, , drop = FALSE]
+}
+filter_features_in_multiple_batches <- function(data, min_batch_count = 2, verbose = TRUE) {
+  meta <- data$metadata
+  abs_mat <- data$simulated_data_abs
+  rela_mat <- data$simulated_data_rela
+  
+  # 确保 SampleID 对齐
+  stopifnot(rownames(abs_mat) == meta$SampleID)
+  
+  # 获取所有唯一的 Batch
+  batches <- unique(meta$Batch)
+  
+  # 构建一个向量，记录每个特征在多少个 batch 中有非零值
+  feature_batch_count <- setNames(rep(0, ncol(abs_mat)), colnames(abs_mat))
+  
+  for (batch in batches) {
+    samples <- meta$SampleID[meta$Batch == batch]
+    if (length(samples) == 0) next
+    
+    batch_data <- abs_mat[samples, , drop = FALSE]
+    feature_present <- colSums(batch_data != 0) > 0  # 特征在该 batch 中是否出现
+    feature_batch_count[feature_present] <- feature_batch_count[feature_present] + 1
+  }
+  
+  # 筛选在至少 min_batch_count 个 batch 中出现的特征
+  keep_features <- names(feature_batch_count[feature_batch_count >= min_batch_count])
+  
+  if (verbose) {
+    removed <- length(feature_batch_count) - length(keep_features)
+    message(removed, " features removed; ", length(keep_features), " retained.")
+  }
+  
+  # 保留筛选后的特征列
+  abs_mat_filtered <- abs_mat[, keep_features, drop = FALSE]
+  rela_mat_filtered <- rela_mat[, keep_features, drop = FALSE]
+  
+  # 返回新的 list
+  return(list(
+    metadata = meta,
+    simulated_data_abs = abs_mat_filtered,
+    simulated_data_rela = rela_mat_filtered
+  ))
+}
 
 
-run_meta <- function(method_name,normalization,meta_method,data,transform=NULL,data_index){
-  #####提取covariates,categorical_variable_name
-  covariates <- setdiff(colnames(data$metadata),c('Group','SampleID','Batch'))
-  categorical_variable_name <- safe_intersect_or_null(c("gender"), covariates)
-  output_file_name <- paste(method_name,normalization,sep ='_')
+
+
+run_meta <- function(method_name, normalization, meta_method, data, transform = NULL, data_index) {
+  ##### helper functions #####
+  add_unique <- function(x, val) {
+    unique(as.character(c(x, val)))
+  }
+  
+  drop_allzero_samples <- function(mat, min_nonzero_features = 2) {
+    mat <- as.matrix(mat)
+    
+    # 基础检查
+    if (any(!is.finite(mat))) stop("Input matrix contains NA/Inf/NaN.")
+    if (any(mat < 0)) stop("Input matrix contains negative values.")
+    
+    # 每个样本（行）的“非零特征数”
+    nnz_feat <- rowSums(mat > 0)
+    
+    # 删掉非零特征数 < min_nonzero_features 的样本
+    keep_samp <- nnz_feat >= min_nonzero_features
+    mat <- mat[keep_samp, , drop = FALSE]
+    
+    if (nrow(mat) == 0) {
+      stop(sprintf(
+        "All samples were removed (each had < %d non-zero features after filtering).",
+        min_nonzero_features
+      ))
+    }
+    
+    mat
+  }
+  
+  prepare_design_info <- function(meta) {
+    meta$SampleID <- as.character(meta$SampleID)
+    if ("Batch" %in% colnames(meta)) meta$Batch <- as.character(meta$Batch)
+    
+    # 清理分类变量 unused levels
+    for (nm in setdiff(colnames(meta), "SampleID")) {
+      x <- meta[[nm]]
+      if (is.factor(x) || is.character(x) || is.logical(x)) {
+        meta[[nm]] <- droplevels(factor(x))
+      }
+    }
+    
+    # Group 必须至少2水平
+    if (!("Group" %in% colnames(meta))) return(NULL)
+    if (!is.factor(meta$Group)) meta$Group <- droplevels(factor(meta$Group))
+    if (nlevels(meta$Group) < 2) return(NULL)
+    
+    covariates_now <- setdiff(colnames(meta), c("Group", "SampleID", "Batch"))
+    
+    if (length(covariates_now) > 0) {
+      keep_covariates <- covariates_now[
+        vapply(covariates_now, function(v) {
+          x <- meta[[v]]
+          if (is.factor(x)) {
+            nlevels(x) >= 2
+          } else {
+            length(unique(x[!is.na(x)])) >= 2
+          }
+        }, logical(1))
+      ]
+    } else {
+      keep_covariates <- character(0)
+    }
+    
+    keep_cols <- c("SampleID", "Group", intersect("Batch", colnames(meta)), keep_covariates)
+    meta2 <- meta[, keep_cols, drop = FALSE]
+    
+    categorical_variable_name_now <- NULL
+    if (length(keep_covariates) > 0) {
+      categorical_variable_name_now <- keep_covariates[
+        vapply(keep_covariates, function(v) {
+          x <- meta2[[v]]
+          is.factor(x) || is.character(x) || is.logical(x)
+        }, logical(1))
+      ]
+      if (length(categorical_variable_name_now) == 0) categorical_variable_name_now <- NULL
+    }
+    
+    if (length(keep_covariates) == 0) keep_covariates <- NULL
+    
+    list(
+      metadata = meta2,
+      covariates = keep_covariates,
+      categorical_variable_name = categorical_variable_name_now
+    )
+  }
+  
+  # ---------- full-rank helpers ----------
+  rank_ok <- function(meta, terms) {
+    terms <- unique(as.character(terms))
+    terms <- terms[terms %in% colnames(meta)]
+    
+    if (length(terms) == 0) return(TRUE)
+    
+    mm <- model.matrix(reformulate(terms), data = meta)
+    qr(mm)$rank == ncol(mm)
+  }
+  
+  drop_covariates_to_full_rank_minimal <- function(meta,
+                                                   covariates,
+                                                   protect = character(0),
+                                                   always_keep = "Group",
+                                                   max_drop = 3,
+                                                   allow_drop_protect = FALSE,
+                                                   verbose = TRUE,
+                                                   label = NULL) {
+    covariates <- unique(as.character(covariates))
+    covariates <- covariates[covariates %in% colnames(meta)]
+    
+    protect <- intersect(protect, colnames(meta))
+    always_keep <- intersect(always_keep, colnames(meta))
+    
+    base_terms <- unique(c(always_keep, protect, setdiff(covariates, c(always_keep, protect))))
+    base_terms <- base_terms[base_terms %in% colnames(meta)]
+    
+    if (rank_ok(meta, base_terms)) {
+      if (verbose) {
+        msg_prefix <- if (!is.null(label)) paste0("[", label, "] ") else ""
+        message(msg_prefix, "Design matrix is already full rank with terms: ",
+                paste(base_terms, collapse = ", "))
+      }
+      return(list(
+        covariates = setdiff(base_terms, always_keep),
+        dropped = character(0),
+        full_rank = TRUE,
+        terms_used = base_terms
+      ))
+    }
+    
+    removable <- setdiff(base_terms, c(always_keep, protect))
+    
+    max_k <- min(max_drop, length(removable))
+    for (k in seq_len(max_k)) {
+      combs <- combn(removable, k, simplify = FALSE)
+      for (drop_set in combs) {
+        kept_terms <- setdiff(base_terms, drop_set)
+        if (rank_ok(meta, kept_terms)) {
+          if (verbose) {
+            msg_prefix <- if (!is.null(label)) paste0("[", label, "] ") else ""
+            message(msg_prefix, "Dropped to restore full rank: ",
+                    paste(drop_set, collapse = ", "))
+            message(msg_prefix, "Terms kept for modeling: ",
+                    paste(kept_terms, collapse = ", "))
+          }
+          return(list(
+            covariates = setdiff(kept_terms, always_keep),
+            dropped = drop_set,
+            full_rank = TRUE,
+            terms_used = kept_terms
+          ))
+        }
+      }
+    }
+    
+    if (allow_drop_protect && length(protect) > 0) {
+      kept_terms <- setdiff(base_terms, protect)
+      if (rank_ok(meta, kept_terms)) {
+        if (verbose) {
+          msg_prefix <- if (!is.null(label)) paste0("[", label, "] ") else ""
+          message(msg_prefix, "Dropped protected terms to restore full rank: ",
+                  paste(protect, collapse = ", "))
+          message(msg_prefix, "Terms kept for modeling: ",
+                  paste(kept_terms, collapse = ", "))
+        }
+        return(list(
+          covariates = setdiff(kept_terms, always_keep),
+          dropped = protect,
+          full_rank = TRUE,
+          terms_used = kept_terms
+        ))
+      }
+    }
+    
+    stop(
+      if (!is.null(label)) paste0("[", label, "] ") else "",
+      "Design matrix not full rank. Minimal-drop search up to max_drop=",
+      max_drop,
+      " failed."
+    )
+  }
+  
+  # ---------- batch 内部检查 + 修复 ----------
+  check_and_fix_batch_design <- function(batch_name,
+                                         batch_meta,
+                                         covariates,
+                                         categorical_variable_name = NULL,
+                                         max_drop = 2,
+                                         verbose = TRUE) {
+    msg_prefix <- paste0("[Batch ", batch_name, "] ")
+    
+    if (verbose) {
+      message(msg_prefix, "Start design check")
+      message(msg_prefix, "n samples = ", nrow(batch_meta))
+    }
+    
+    # Group 检查
+    if (!("Group" %in% colnames(batch_meta))) {
+      if (verbose) message(msg_prefix, "Skip: no Group column.")
+      return(NULL)
+    }
+    if (!is.factor(batch_meta$Group)) {
+      batch_meta$Group <- droplevels(factor(batch_meta$Group))
+    }
+    if (nlevels(batch_meta$Group) < 2) {
+      if (verbose) {
+        message(msg_prefix, "Skip: Group has < 2 levels after filtering.")
+      }
+      return(NULL)
+    }
+    if (verbose) {
+      message(msg_prefix, "Group levels = ",
+              paste(levels(batch_meta$Group), collapse = ", "))
+    }
+    
+    covariates <- unique(as.character(covariates))
+    covariates <- covariates[covariates %in% colnames(batch_meta)]
+    
+    # 报告原始协变量
+    if (verbose) {
+      if (length(covariates) == 0) {
+        message(msg_prefix, "No covariates to check.")
+      } else {
+        message(msg_prefix, "Candidate covariates = ",
+                paste(covariates, collapse = ", "))
+      }
+    }
+    
+    # 再次检查单水平/常数（虽然 prepare_design_info 已做过，但这里显式报告）
+    dropped_singleton <- character(0)
+    keep_covs <- character(0)
+    
+    if (length(covariates) > 0) {
+      for (v in covariates) {
+        x <- batch_meta[[v]]
+        ok <- if (is.factor(x) || is.character(x) || is.logical(x)) {
+          nlevels(droplevels(factor(x))) >= 2
+        } else {
+          length(unique(x[!is.na(x)])) >= 2
+        }
+        
+        if (ok) {
+          keep_covs <- c(keep_covs, v)
+        } else {
+          dropped_singleton <- c(dropped_singleton, v)
+        }
+      }
+    }
+    
+    if (verbose) {
+      if (length(dropped_singleton) > 0) {
+        message(msg_prefix, "Dropped singleton/constant covariates: ",
+                paste(dropped_singleton, collapse = ", "))
+      } else {
+        message(msg_prefix, "No singleton/constant covariates were dropped.")
+      }
+    }
+    
+    # 满秩检查（batch 内不带 Batch）
+    fix <- drop_covariates_to_full_rank_minimal(
+      meta = batch_meta,
+      covariates = keep_covs,
+      protect = character(0),
+      always_keep = "Group",
+      max_drop = max_drop,
+      allow_drop_protect = FALSE,
+      verbose = verbose,
+      label = paste0("Batch ", batch_name)
+    )
+    
+    covariates_use2 <- fix$covariates
+    categorical_use2 <- intersect(as.character(categorical_variable_name), as.character(covariates_use2))
+    if (length(categorical_use2) == 0) categorical_use2 <- NULL
+    
+    if (verbose) {
+      if (length(covariates_use2) > 0) {
+        message(msg_prefix, "Final covariates used = ",
+                paste(covariates_use2, collapse = ", "))
+      } else {
+        message(msg_prefix, "Final covariates used = NULL")
+      }
+      
+      if (!is.null(categorical_use2)) {
+        message(msg_prefix, "Final categorical covariates = ",
+                paste(categorical_use2, collapse = ", "))
+      } else {
+        message(msg_prefix, "Final categorical covariates = NULL")
+      }
+      
+      message(msg_prefix, "Design check finished")
+    }
+    
+    list(
+      metadata = batch_meta,
+      covariates = covariates_use2,
+      categorical_variable_name = categorical_use2,
+      dropped_singleton = dropped_singleton,
+      dropped_rank = fix$dropped,
+      terms_used = fix$terms_used
+    )
+  }
+  
+  run_batch_method_simple <- function(batch_data_list, selected_method_func, normalization) {
+    lapply(batch_data_list, function(obj) {
+      selected_method_func(obj$data, obj$covariates, normalization)
+    })
+  }
+  
+  run_batch_method_maaslin <- function(batch_data_list, selected_method_func, normalization, transform) {
+    lapply(batch_data_list, function(obj) {
+      selected_method_func(
+        obj$data,
+        obj$covariates,
+        obj$categorical_variable_name,
+        normalization,
+        transform
+      )
+    })
+  }
+  
+  ##### method map #####
+  output_file_name <- paste(method_name, normalization, sep = "_")
+  
   method_function_map <- list(
     edgeR = edgeR_analysis,
     lmem = LM_random_effect,
     limma = limma_analysis,
     lfem = LM_fixed_effect,
     ANCOMBC = ANCOMBC_analysis,
-    Maaslin2 = Maaslin2_LM_analysis,
-    fastANCOM = fastANCOM_analysis
+    Maaslin2_lm = Maaslin2_LM_analysis,
+    fastANCOM = fastANCOM_analysis,
+    Maaslin2_zinb = Maaslin2_ZINB_analysis,
+    Maaslin2_negbin = Maaslin2_NEGBIN_analysis,
+    Maaslin2_cplm = Maaslin2_CPLM_analysis,
+    DESeq2 = DESeq2_analysis
   )
+  
   selected_method_func <- method_function_map[[method_name]]
+  if (is.null(selected_method_func)) stop("Unknown method_name: ", method_name)
+  
+  ##### Step 1: 先按 batch 过滤 feature #####
   data <- filter_features_in_multiple_batches(data, min_batch_count = 2, verbose = TRUE)
-  # 提取所有唯一的 Batch 值
-  batch_levels <- unique(data$metadata$Batch)
+  data$metadata$SampleID <- as.character(data$metadata$SampleID)
+  if ("Batch" %in% colnames(data$metadata)) data$metadata$Batch <- as.character(data$metadata$Batch)
   
-  # 创建一个列表保存每个 Batch 对应的样本 ID
-  batch_sample_list <- lapply(batch_levels, function(batch_val) {
-    data$metadata$SampleID[data$metadata$Batch == batch_val]
-  })
-  names(batch_sample_list) <- batch_levels
+  ##### Step 2: pooled data 先过滤并对齐 #####
+  data$simulated_data_abs <- remove_low_feature_samples(data$simulated_data_abs)
+  data$simulated_data_abs <- filter_by_prevalence(data$simulated_data_abs, 0.1)
+  data$simulated_data_abs <- drop_allzero_samples(data$simulated_data_abs)
   
+  data$simulated_data_rela <- remove_low_feature_samples(data$simulated_data_rela)
+  data$simulated_data_rela <- filter_by_prevalence(data$simulated_data_rela, 0.1)
+  data$simulated_data_rela <- drop_allzero_samples(data$simulated_data_rela)
   
+  common_ids <- Reduce(intersect, list(
+    rownames(data$simulated_data_abs),
+    rownames(data$simulated_data_rela),
+    data$metadata$SampleID
+  ))
+  
+  common_features <- Reduce(intersect, list(
+    colnames(data$simulated_data_abs),
+    colnames(data$simulated_data_rela)
+  ))
+  
+  if (length(common_ids) == 0) stop("No common samples left after pooled filtering/alignment.")
+  if (length(common_features) == 0) stop("No common features left after pooled filtering/alignment.")
+  
+  data$simulated_data_abs  <- data$simulated_data_abs[common_ids, common_features, drop = FALSE]
+  data$simulated_data_rela <- data$simulated_data_rela[common_ids, common_features, drop = FALSE]
+  data$metadata <- data$metadata[match(common_ids, data$metadata$SampleID), , drop = FALSE]
+  
+  stopifnot(nrow(data$simulated_data_abs) == nrow(data$metadata))
+  stopifnot(all(rownames(data$simulated_data_abs) == data$metadata$SampleID))
+  stopifnot(nrow(data$simulated_data_rela) == nrow(data$metadata))
+  stopifnot(all(rownames(data$simulated_data_rela) == data$metadata$SampleID))
+  
+  ##### Step 3: pooled 设计变量清理 #####
+  pooled_design_info <- prepare_design_info(data$metadata)
+  if (is.null(pooled_design_info)) stop("Pooled data has fewer than 2 Group levels after filtering.")
+  
+  data$metadata <- pooled_design_info$metadata
+  pooled_covariates <- pooled_design_info$covariates
+  pooled_categorical_variable_name <- pooled_design_info$categorical_variable_name
+  
+  ##### Step 4: 构建 batch-specific data + design #####
+  if (!("Batch" %in% colnames(data$metadata))) stop("Batch column is required for meta-analysis workflow.")
+  
+  batch_levels <- unique(as.character(data$metadata$Batch))
   batch_data_list <- list()
   
-  for (batch_name in names(batch_sample_list)) {
-    sample_ids <- batch_sample_list[[batch_name]]
+  # batch 内 minimal-drop 配置
+  batch_minimal_max_drop <- 2
+  
+  for (batch_name in batch_levels) {
+    message("========== Processing Batch: ", batch_name, " ==========")
+    
+    sample_ids <- as.character(data$metadata$SampleID[as.character(data$metadata$Batch) == batch_name])
+    if (length(sample_ids) == 0) next
+    
+    batch_abs  <- data$simulated_data_abs[sample_ids, , drop = FALSE]
+    batch_rela <- data$simulated_data_rela[sample_ids, , drop = FALSE]
+    batch_meta <- data$metadata[match(sample_ids, data$metadata$SampleID), , drop = FALSE]
+    
+    message("[Batch ", batch_name, "] Initial sample size = ", nrow(batch_meta),
+            ", feature size = ", ncol(batch_abs))
+    
+    # batch 内再次过滤
+    batch_abs  <- remove_low_feature_samples(batch_abs)
+    batch_abs  <- filter_by_prevalence(batch_abs, 0.1)
+    batch_abs <- drop_allzero_samples(batch_abs)
+    batch_rela <- remove_low_feature_samples(batch_rela)
+    batch_rela <- filter_by_prevalence(batch_rela, 0.1)
+    batch_rela <- drop_allzero_samples(batch_rela)
+    
+    keep_ids <- Reduce(intersect, list(rownames(batch_abs), rownames(batch_rela), batch_meta$SampleID))
+    keep_features <- Reduce(intersect, list(colnames(batch_abs), colnames(batch_rela)))
+    if (length(keep_ids) == 0 || length(keep_features) == 0) {
+      message("[Batch ", batch_name, "] Skip: no common samples or features left after batch filtering.")
+      next
+    }
+    
+    batch_abs  <- batch_abs[keep_ids, keep_features, drop = FALSE]
+    batch_rela <- batch_rela[keep_ids, keep_features, drop = FALSE]
+    batch_meta <- batch_meta[match(keep_ids, batch_meta$SampleID), , drop = FALSE]
+    
+    message("[Batch ", batch_name, "] After batch filtering: sample size = ", nrow(batch_meta),
+            ", feature size = ", ncol(batch_abs))
     
     batch_data <- list(
-      simulated_data_rela = data$simulated_data_rela[sample_ids, , drop = FALSE],
-      simulated_data_abs = data$simulated_data_abs[sample_ids, , drop = FALSE],
-      metadata = data$metadata[data$metadata$SampleID %in% sample_ids, , drop = FALSE]
+      simulated_data_rela = batch_rela,
+      simulated_data_abs = batch_abs,
+      metadata = batch_meta
     )
     
-    # 保存到列表中（可选命名）
-    batch_data_list[[batch_name]] <- batch_data
-  }
-  data$simulated_data_abs <- remove_low_feature_samples(data$simulated_data_abs)
-  data$simulated_data_abs <- filter_by_prevalence(data$simulated_data_abs,0.1)
-  data$simulated_data_rela <- remove_low_feature_samples(data$simulated_data_rela)
-  data$simulated_data_rela <- filter_by_prevalence(data$simulated_data_rela,0.1)
-  data$metadata <- data$metadata[data$metadata$SampleID %in% rownames(data$simulated_data_abs),]
-  for (batch_name in names(batch_data_list)) {
-    batch_data_list[[batch_name]]$simulated_data_abs <-
-      remove_low_feature_samples(batch_data_list[[batch_name]]$simulated_data_abs)
-    batch_data_list[[batch_name]]$simulated_data_abs <-
-      filter_by_prevalence(batch_data_list[[batch_name]]$simulated_data_abs, 0.1)
-    batch_data_list[[batch_name]]$simulated_data_rela <-
-      remove_low_feature_samples(batch_data_list[[batch_name]]$simulated_data_rela)
-    batch_data_list[[batch_name]]$simulated_data_rela <-
-      filter_by_prevalence(batch_data_list[[batch_name]]$simulated_data_rela, 0.1)
-    batch_data_list[[batch_name]]$metadata <-
-      batch_data_list[[batch_name]]$metadata[batch_data_list[[batch_name]]$metadata$SampleID %in% rownames(batch_data_list[[batch_name]]$simulated_data_abs), ]
+    batch_design_info <- prepare_design_info(batch_data$metadata)
+    if (is.null(batch_design_info)) {
+      message("[Batch ", batch_name, "] Skip: fewer than 2 Group levels after design cleanup.")
+      next
+    }
+    
+    # 新增：batch 内部显式检查是否满秩，并最小删除协变量
+    batch_check <- check_and_fix_batch_design(
+      batch_name = batch_name,
+      batch_meta = batch_design_info$metadata,
+      covariates = batch_design_info$covariates,
+      categorical_variable_name = batch_design_info$categorical_variable_name,
+      max_drop = batch_minimal_max_drop,
+      verbose = TRUE
+    )
+    if (is.null(batch_check)) next
+    
+    batch_data$metadata <- batch_check$metadata
+    
+    stopifnot(nrow(batch_data$simulated_data_abs) == nrow(batch_data$metadata))
+    stopifnot(all(rownames(batch_data$simulated_data_abs) == batch_data$metadata$SampleID))
+    stopifnot(nrow(batch_data$simulated_data_rela) == nrow(batch_data$metadata))
+    stopifnot(all(rownames(batch_data$simulated_data_rela) == batch_data$metadata$SampleID))
+    
+    batch_data_list[[batch_name]] <- list(
+      data = batch_data,
+      covariates = batch_check$covariates,
+      categorical_variable_name = batch_check$categorical_variable_name
+    )
   }
   
-  if(!method_name %in% c('lmem','Maaslin2','fastANCOM')){
-    if(meta_method == 'rma.uni'){
-      # 1. 循环调用 selected_method_func，并将结果保存在列表中
-      result_list <- lapply(batch_data_list, function(data) {
-        selected_method_func(data, covariates, normalization)
-      })
+  if (length(batch_data_list) == 0) stop("No valid batch left after batch-specific filtering.")
+  sample_sizes <- sapply(batch_data_list, function(obj) nrow(obj$data$metadata))
+  
+  ##### Step 5: 按方法执行 #####
+  # not_used_meta 的 minimal-drop 配置（只删协变量，不删Batch）
+  minimal_max_drop <- 2
+  minimal_allow_drop_batch <- FALSE
+  
+  if (method_name == "ANCOMBC") {
+    
+    if (meta_method == "rma.uni") {
+      result_list <- run_batch_method_simple(batch_data_list, selected_method_func, normalization)
       
-      # 2. 提取所有 Feature 的并集
       all_feature <- Reduce(union, lapply(result_list, function(res) res$Feature))
-      
-      # 3. 初始化合并数据框
       effect_merge_data <- data.frame(Feature = all_feature)
       se_merge_data <- data.frame(Feature = all_feature)
       
-      # 4. 逐一提取 lfc 和 se，按照 Feature 对齐
       batch_names <- names(batch_data_list)
       for (i in seq_along(result_list)) {
         res <- result_list[[i]]
@@ -510,176 +1228,232 @@ run_meta <- function(method_name,normalization,meta_method,data,transform=NULL,d
         se_merge_data[[paste0("se", batch)]] <- res$se_Group1[match(all_feature, res$Feature)]
       }
       
-      # 5. 设置 rownames，移除 Feature 列
       rownames(effect_merge_data) <- all_feature
       rownames(se_merge_data) <- all_feature
-      effect_merge_data <- effect_merge_data[, -1]
-      se_merge_data <- se_merge_data[, -1]
-      method_res_REML<-meta_combine(effect_merge_data,se_merge_data,length(batch_data_list),rma_conv = 1e-10,method_type = 'REML',rma_maxit = 1000)
-      method_res_EB<-meta_combine(effect_merge_data,se_merge_data,length(batch_data_list),rma_conv = 1e-10,method_type = 'EB',rma_maxit = 1000)
-      method_res_PM<-meta_combine(effect_merge_data,se_merge_data,length(batch_data_list),rma_conv = 1e-10,method_type = 'PM',rma_maxit = 1000)
-      write.table(method_res_REML,file = paste0(output_file_name,'_res_',data_index,'_',meta_method,'_REML','.tsv'),sep = '\t',row.names = F,col.names = T,quote = F)
-      write.table(method_res_EB,file = paste0(output_file_name,'_res_',data_index,'_',meta_method,'_EB','.tsv'),sep = '\t',row.names = F,col.names = T,quote = F)
-      write.table(method_res_PM,file = paste0(output_file_name,'_res_',data_index,'_',meta_method,'_PM','.tsv'),sep = '\t',row.names = F,col.names = T,quote = F)
-    }else if(meta_method == 'Stouffer'){
-      result_list <- lapply(batch_data_list, function(data) {
-        selected_method_func(data, covariates, normalization)
-      })
-      sample_sizes <- sapply(batch_sample_list, length)
+      effect_merge_data <- effect_merge_data[, -1, drop = FALSE]
+      se_merge_data <- se_merge_data[, -1, drop = FALSE]
       
-      method_res <- meta_combine_p(
-        result_list = result_list,
-        sample_size = sample_sizes,
-        method = "Stouffer"
+      method_res_REML <- meta_combine(effect_merge_data, se_merge_data, length(batch_data_list),
+                                      rma_conv = 1e-10, method_type = "REML", rma_maxit = 1000)
+      method_res_EB <- meta_combine(effect_merge_data, se_merge_data, length(batch_data_list),
+                                    rma_conv = 1e-10, method_type = "EB", rma_maxit = 1000)
+      method_res_PM <- meta_combine(effect_merge_data, se_merge_data, length(batch_data_list),
+                                    rma_conv = 1e-10, method_type = "PM", rma_maxit = 1000)
+      
+      write.table(method_res_REML, file = paste0(output_file_name, "_res_", data_index, "_", meta_method, "_REML.tsv"),
+                  sep = "\t", row.names = FALSE, col.names = TRUE, quote = FALSE)
+      write.table(method_res_EB, file = paste0(output_file_name, "_res_", data_index, "_", meta_method, "_EB.tsv"),
+                  sep = "\t", row.names = FALSE, col.names = TRUE, quote = FALSE)
+      write.table(method_res_PM, file = paste0(output_file_name, "_res_", data_index, "_", meta_method, "_PM.tsv"),
+                  sep = "\t", row.names = FALSE, col.names = TRUE, quote = FALSE)
+      
+    } else if (meta_method == "Stouffer") {
+      result_list <- run_batch_method_simple(batch_data_list, selected_method_func, normalization)
+      method_res <- meta_combine_p(result_list = result_list, sample_size = sample_sizes, method = "Stouffer")
+      write.table(method_res, file = paste0(output_file_name, "_res_", data_index, "_", meta_method, ".tsv"),
+                  sep = "\t", row.names = FALSE, col.names = TRUE, quote = FALSE)
+      
+    } else if (meta_method == "Fisher") {
+      result_list <- run_batch_method_simple(batch_data_list, selected_method_func, normalization)
+      method_res <- meta_combine_p(result_list = result_list, sample_size = sample_sizes, method = "Fisher")
+      write.table(method_res, file = paste0(output_file_name, "_res_", data_index, "_", meta_method, ".tsv"),
+                  sep = "\t", row.names = FALSE, col.names = TRUE, quote = FALSE)
+      
+    } else if (meta_method == "not_used_meta") {
+      covariates_use <- add_unique(pooled_covariates, "Batch")
+      fix <- drop_covariates_to_full_rank_minimal(
+        meta = data$metadata,
+        covariates = covariates_use,
+        protect = "Batch",
+        always_keep = "Group",
+        max_drop = minimal_max_drop,
+        allow_drop_protect = minimal_allow_drop_batch,
+        verbose = TRUE,
+        label = "not_used_meta"
       )
-      stopifnot(identical(names(batch_data_list), names(batch_sample_list)))
-      #method_res<-meta_combine_p(result_list = list(data1_res,data2_res,data3_res), sample_size = c(length(data1_sample),length(data2_sample),length(data3_sample)),method = 'Stouffer')
-      write.table(method_res,file = paste0(output_file_name,'_res_',data_index,'_',meta_method,'.tsv'),sep = '\t',row.names = F,col.names = T,quote = F)
-    }else if(meta_method == 'Fisher'){
-      result_list <- lapply(batch_data_list, function(data) {
-        selected_method_func(data, covariates, normalization)
-      })
-      sample_sizes <- sapply(batch_sample_list, length)
-      method_res <- meta_combine_p(
-        result_list = result_list,
-        sample_size = sample_sizes,
-        method = "Fisher"
-      )
-      stopifnot(identical(names(batch_data_list), names(batch_sample_list)))
-      #method_res<-meta_combine_p(result_list = list(data1_res,data2_res,data3_res), sample_size = c(length(data1_sample),length(data2_sample),length(data3_sample)),method = 'Fisher')
-      write.table(method_res,file = paste0(output_file_name,'_res_',data_index,'_',meta_method,'.tsv'),sep = '\t',row.names = F,col.names = T,quote = F)
-    }else if(meta_method == 'not_used_meta'){
-      covariates <- append(covariates,'Batch')
-      method_res<-selected_method_func(data,covariates,normalization)
-      write.table(method_res,file = paste0(output_file_name,'_res_',data_index,'_no_meta.tsv'),sep = '\t',row.names = F,col.names = T,quote = F)
+      covariates_use2 <- fix$covariates
+      
+      method_res <- selected_method_func(data, covariates_use2, normalization)
+      write.table(method_res, file = paste0(output_file_name, "_res_", data_index, "_no_meta.tsv"),
+                  sep = "\t", row.names = FALSE, col.names = TRUE, quote = FALSE)
     }
-  }else{
-    if(method_name == 'Maaslin2'){
-      if(meta_method == 'rma.uni'){
-        # 1. 执行方法函数
-        result_list <- lapply(batch_data_list, function(data) {
-          selected_method_func(data, covariates, categorical_variable_name, normalization, transform)
-        })
-        
-        # 2. 筛选 metadata == "Group"
-        result_list <- lapply(result_list, function(res) {
-          res[which(res$metadata == "Group"), ]
-        })
-        
-        # 3. 获取所有 feature 并集
-        all_feature <- Reduce(union, lapply(result_list, function(res) res$Feature))
-        
-        # 4. 初始化数据框
-        effect_merge_data <- data.frame(Feature = all_feature)
-        se_merge_data <- data.frame(Feature = all_feature)
-        
-        # 5. 添加命名列
-        batch_names <- names(batch_data_list)
-        
-        for (i in seq_along(result_list)) {
-          res <- result_list[[i]]
-          batch <- batch_names[i]
-          effect_merge_data[[paste0("effect_", batch)]] <- res$coef[match(all_feature, res$Feature)]
-          se_merge_data[[paste0("se_", batch)]] <- res$stderr[match(all_feature, res$Feature)]
-        }
-        
-        # 6. 设置行名 & 删除 Feature 列
-        rownames(effect_merge_data) <- all_feature
-        rownames(se_merge_data) <- all_feature
-        effect_merge_data <- effect_merge_data[, -1]
-        se_merge_data <- se_merge_data[, -1]
-        method_res_REML<-meta_combine(effect_merge_data,se_merge_data,length(batch_data_list),rma_conv = 1e-10,method_type = 'REML',rma_maxit = 1000)
-        method_res_EB<-meta_combine(effect_merge_data,se_merge_data,length(batch_data_list),rma_conv = 1e-10,method_type = 'EB',rma_maxit = 1000)
-        method_res_PM<-meta_combine(effect_merge_data,se_merge_data,length(batch_data_list),rma_conv = 1e-10,method_type = 'PM',rma_maxit = 1000)
-        write.table(method_res_REML,file = paste0(output_file_name,'_res_',data_index,'_',meta_method,'_REML','.tsv'),sep = '\t',row.names = F,col.names = T,quote = F)
-        write.table(method_res_EB,file = paste0(output_file_name,'_res_',data_index,'_',meta_method,'_EB','.tsv'),sep = '\t',row.names = F,col.names = T,quote = F)
-        write.table(method_res_PM,file = paste0(output_file_name,'_res_',data_index,'_',meta_method,'_PM','.tsv'),sep = '\t',row.names = F,col.names = T,quote = F)
-      }else if(meta_method == 'Stouffer'){
-        # 1. 执行方法函数
-        result_list <- lapply(batch_data_list, function(data) {
-          selected_method_func(data, covariates, categorical_variable_name, normalization, transform)
-        })
-        
-        # 2. 筛选 metadata == "Group"
-        result_list <- lapply(result_list, function(res) {
-          res[which(res$metadata == "Group"), ]
-        })
-        sample_sizes <- sapply(batch_sample_list, length)
-        
-        method_res <- meta_combine_p(
-          result_list = result_list,
-          sample_size = sample_sizes,
-          method = "Stouffer"
-        )
-        stopifnot(identical(names(batch_data_list), names(batch_sample_list)))
-        
-        #method_res<-meta_combine_p(result_list = list(data1_res,data2_res,data3_res), sample_size = c(length(data1_sample),length(data2_sample),length(data3_sample)),method = 'Stouffer')
-        write.table(method_res,file = paste0(output_file_name,'_res_',data_index,'_',meta_method,'.tsv'),sep = '\t',row.names = F,col.names = T,quote = F)
-      }else if(meta_method == 'Fisher'){
-        # 1. 执行方法函数
-        result_list <- lapply(batch_data_list, function(data) {
-          selected_method_func(data, covariates, categorical_variable_name, normalization, transform)
-        })
-        
-        # 2. 筛选 metadata == "Group"
-        result_list <- lapply(result_list, function(res) {
-          res[which(res$metadata == "Group"), ]
-        })
-        sample_sizes <- sapply(batch_sample_list, length)
-        
-        method_res <- meta_combine_p(
-          result_list = result_list,
-          sample_size = sample_sizes,
-          method = "Fisher"
-        )
-        stopifnot(identical(names(batch_data_list), names(batch_sample_list)))
-        #method_res<-meta_combine_p(result_list = list(data1_res,data2_res,data3_res), sample_size = c(length(data1_sample),length(data2_sample),length(data3_sample)),method = 'Fisher')
-        write.table(method_res,file = paste0(output_file_name,'_res_',data_index,'_',meta_method,'.tsv'),sep = '\t',row.names = F,col.names = T,quote = F)
-      }else if(meta_method == 'not_used_meta'){
-        covariates <- append(covariates,'Batch')
-        categorical_variable_name <- append(categorical_variable_name,'Batch')
-        method_res<-selected_method_func(data,covariates,categorical_variable_name,normalization,transform)
-        method_res<-method_res[which(method_res$metadata=='Group'),]
-        write.table(method_res,file = paste0(output_file_name,'_res_',data_index,'_no_meta.tsv'),sep = '\t',row.names = F,col.names = T,quote = F)
+    
+  } else if (grepl("Maaslin2", method_name)) {
+    
+    if (meta_method == "rma.uni") {
+      result_list <- run_batch_method_maaslin(batch_data_list, selected_method_func, normalization, transform)
+      result_list <- lapply(result_list, function(res) res[which(res$metadata == "Group"), ])
+      
+      all_feature <- Reduce(union, lapply(result_list, function(res) res$Feature))
+      effect_merge_data <- data.frame(Feature = all_feature)
+      se_merge_data <- data.frame(Feature = all_feature)
+      
+      batch_names <- names(batch_data_list)
+      for (i in seq_along(result_list)) {
+        res <- result_list[[i]]
+        batch <- batch_names[i]
+        effect_merge_data[[paste0("effect_", batch)]] <- res$coef[match(all_feature, res$Feature)]
+        se_merge_data[[paste0("se_", batch)]] <- res$stderr[match(all_feature, res$Feature)]
       }
-    }else{
-      if(meta_method == 'Stouffer'){
-        # 1. 执行方法函数
-        result_list <- lapply(batch_data_list, function(data) {
-          selected_method_func(data, covariates, categorical_variable_name, normalization)
-        })
-        sample_sizes <- sapply(batch_sample_list, length)
-        
-        method_res <- meta_combine_p(
-          result_list = result_list,
-          sample_size = sample_sizes,
-          method = "Stouffer"
-        )
-        stopifnot(identical(names(batch_data_list), names(batch_sample_list)))
-        #method_res<-meta_combine_p(result_list = list(data1_res,data2_res,data3_res), sample_size = c(length(data1_sample),length(data2_sample),length(data3_sample)),method = 'Stouffer')
-        write.table(method_res,file = paste0(output_file_name,'_res_',data_index,'_',meta_method,'.tsv'),sep = '\t',row.names = F,col.names = T,quote = F)
-      }else if(meta_method == 'Fisher'){
-        # 1. 执行方法函数
-        result_list <- lapply(batch_data_list, function(data) {
-          selected_method_func(data, covariates, categorical_variable_name, normalization)
-        })
-        sample_sizes <- sapply(batch_sample_list, length)
-        
-        method_res <- meta_combine_p(
-          result_list = result_list,
-          sample_size = sample_sizes,
-          method = "Fisher"
-        )
-        stopifnot(identical(names(batch_data_list), names(batch_sample_list)))
-        #method_res<-meta_combine_p(result_list = list(data1_res,data2_res,data3_res), sample_size = c(length(data1_sample),length(data2_sample),length(data3_sample)),method = 'Fisher')
-        write.table(method_res,file = paste0(output_file_name,'_res_',data_index,'_',meta_method,'.tsv'),sep = '\t',row.names = F,col.names = T,quote = F)
-      }else if(meta_method == 'not_used_meta'){
-        covariates <- append(covariates,'Batch')
-        categorical_variable_name <- append(categorical_variable_name,'Batch')
-        method_res<-selected_method_func(data,covariates,categorical_variable_name,normalization)
-        write.table(method_res,file = paste0(output_file_name,'_res_',data_index,'_no_meta.tsv'),sep = '\t',row.names = F,col.names = T,quote = F)
+      
+      rownames(effect_merge_data) <- all_feature
+      rownames(se_merge_data) <- all_feature
+      effect_merge_data <- effect_merge_data[, -1, drop = FALSE]
+      se_merge_data <- se_merge_data[, -1, drop = FALSE]
+      
+      method_res_REML <- meta_combine(effect_merge_data, se_merge_data, length(batch_data_list),
+                                      rma_conv = 1e-10, method_type = "REML", rma_maxit = 1000)
+      method_res_EB <- meta_combine(effect_merge_data, se_merge_data, length(batch_data_list),
+                                    rma_conv = 1e-10, method_type = "EB", rma_maxit = 1000)
+      method_res_PM <- meta_combine(effect_merge_data, se_merge_data, length(batch_data_list),
+                                    rma_conv = 1e-10, method_type = "PM", rma_maxit = 1000)
+      
+      write.table(method_res_REML, file = paste0(output_file_name, "_res_", data_index, "_", meta_method, "_REML.tsv"),
+                  sep = "\t", row.names = FALSE, col.names = TRUE, quote = FALSE)
+      write.table(method_res_EB, file = paste0(output_file_name, "_res_", data_index, "_", meta_method, "_EB.tsv"),
+                  sep = "\t", row.names = FALSE, col.names = TRUE, quote = FALSE)
+      write.table(method_res_PM, file = paste0(output_file_name, "_res_", data_index, "_", meta_method, "_PM.tsv"),
+                  sep = "\t", row.names = FALSE, col.names = TRUE, quote = FALSE)
+      
+    } else if (meta_method == "Stouffer") {
+      result_list <- run_batch_method_maaslin(batch_data_list, selected_method_func, normalization, transform)
+      result_list <- lapply(result_list, function(res) res[which(res$metadata == "Group"), ])
+      method_res <- meta_combine_p(result_list = result_list, sample_size = sample_sizes, method = "Stouffer")
+      write.table(method_res, file = paste0(output_file_name, "_res_", data_index, "_", meta_method, ".tsv"),
+                  sep = "\t", row.names = FALSE, col.names = TRUE, quote = FALSE)
+      
+    } else if (meta_method == "Fisher") {
+      result_list <- run_batch_method_maaslin(batch_data_list, selected_method_func, normalization, transform)
+      result_list <- lapply(result_list, function(res) res[which(res$metadata == "Group"), ])
+      method_res <- meta_combine_p(result_list = result_list, sample_size = sample_sizes, method = "Fisher")
+      write.table(method_res, file = paste0(output_file_name, "_res_", data_index, "_", meta_method, ".tsv"),
+                  sep = "\t", row.names = FALSE, col.names = TRUE, quote = FALSE)
+      
+    } else if (meta_method == "not_used_meta") {
+      covariates_use <- add_unique(pooled_covariates, "Batch")
+      categorical_use <- add_unique(pooled_categorical_variable_name, "Batch")
+      
+      fix <- drop_covariates_to_full_rank_minimal(
+        meta = data$metadata,
+        covariates = covariates_use,
+        protect = "Batch",
+        always_keep = "Group",
+        max_drop = minimal_max_drop,
+        allow_drop_protect = minimal_allow_drop_batch,
+        verbose = TRUE,
+        label = "not_used_meta"
+      )
+      covariates_use2 <- fix$covariates
+      
+      categorical_use2 <- intersect(as.character(categorical_use), as.character(covariates_use2))
+      if (length(categorical_use2) == 0) categorical_use2 <- NULL
+      
+      method_res <- selected_method_func(data, covariates_use2, categorical_use2, normalization, transform)
+      method_res <- method_res[which(method_res$metadata == "Group"), ]
+      
+      write.table(method_res, file = paste0(output_file_name, "_res_", data_index, "_no_meta.tsv"),
+                  sep = "\t", row.names = FALSE, col.names = TRUE, quote = FALSE)
+    }
+    
+  } else if (method_name == "DESeq2") {
+    
+    if (meta_method == "rma.uni") {
+      result_list <- run_batch_method_simple(batch_data_list, selected_method_func, normalization)
+      
+      all_feature <- Reduce(union, lapply(result_list, function(res) res$Feature))
+      effect_merge_data <- data.frame(Feature = all_feature)
+      se_merge_data <- data.frame(Feature = all_feature)
+      
+      batch_names <- names(batch_data_list)
+      for (i in seq_along(result_list)) {
+        res <- result_list[[i]]
+        batch <- batch_names[i]
+        effect_merge_data[[paste0("effect", batch)]] <- res$log2FoldChange[match(all_feature, res$Feature)]
+        se_merge_data[[paste0("se", batch)]] <- res$lfcSE[match(all_feature, res$Feature)]
       }
+      
+      rownames(effect_merge_data) <- all_feature
+      rownames(se_merge_data) <- all_feature
+      effect_merge_data <- effect_merge_data[, -1, drop = FALSE]
+      se_merge_data <- se_merge_data[, -1, drop = FALSE]
+      
+      method_res_REML <- meta_combine(effect_merge_data, se_merge_data, length(batch_data_list),
+                                      rma_conv = 1e-10, method_type = "REML", rma_maxit = 1000)
+      method_res_EB <- meta_combine(effect_merge_data, se_merge_data, length(batch_data_list),
+                                    rma_conv = 1e-10, method_type = "EB", rma_maxit = 1000)
+      method_res_PM <- meta_combine(effect_merge_data, se_merge_data, length(batch_data_list),
+                                    rma_conv = 1e-10, method_type = "PM", rma_maxit = 1000)
+      
+      write.table(method_res_REML, file = paste0(output_file_name, "_res_", data_index, "_", meta_method, "_REML.tsv"),
+                  sep = "\t", row.names = FALSE, col.names = TRUE, quote = FALSE)
+      write.table(method_res_EB, file = paste0(output_file_name, "_res_", data_index, "_", meta_method, "_EB.tsv"),
+                  sep = "\t", row.names = FALSE, col.names = TRUE, quote = FALSE)
+      write.table(method_res_PM, file = paste0(output_file_name, "_res_", data_index, "_", meta_method, "_PM.tsv"),
+                  sep = "\t", row.names = FALSE, col.names = TRUE, quote = FALSE)
+      
+    } else if (meta_method == "Stouffer") {
+      result_list <- run_batch_method_simple(batch_data_list, selected_method_func, normalization)
+      method_res <- meta_combine_p(result_list = result_list, sample_size = sample_sizes, method = "Stouffer")
+      write.table(method_res, file = paste0(output_file_name, "_res_", data_index, "_", meta_method, ".tsv"),
+                  sep = "\t", row.names = FALSE, col.names = TRUE, quote = FALSE)
+      
+    } else if (meta_method == "Fisher") {
+      result_list <- run_batch_method_simple(batch_data_list, selected_method_func, normalization)
+      method_res <- meta_combine_p(result_list = result_list, sample_size = sample_sizes, method = "Fisher")
+      write.table(method_res, file = paste0(output_file_name, "_res_", data_index, "_", meta_method, ".tsv"),
+                  sep = "\t", row.names = FALSE, col.names = TRUE, quote = FALSE)
+      
+    } else if (meta_method == "not_used_meta") {
+      covariates_use <- add_unique(pooled_covariates, "Batch")
+      fix <- drop_covariates_to_full_rank_minimal(
+        meta = data$metadata,
+        covariates = covariates_use,
+        protect = "Batch",
+        always_keep = "Group",
+        max_drop = minimal_max_drop,
+        allow_drop_protect = minimal_allow_drop_batch,
+        verbose = TRUE,
+        label = "not_used_meta"
+      )
+      covariates_use2 <- fix$covariates
+      
+      method_res <- selected_method_func(data, covariates_use2, normalization)
+      write.table(method_res, file = paste0(output_file_name, "_res_", data_index, "_no_meta.tsv"),
+                  sep = "\t", row.names = FALSE, col.names = TRUE, quote = FALSE)
+    }
+    
+  } else {
+    
+    if (meta_method == "Stouffer") {
+      result_list <- run_batch_method_simple(batch_data_list, selected_method_func, normalization)
+      method_res <- meta_combine_p(result_list = result_list, sample_size = sample_sizes, method = "Stouffer")
+      write.table(method_res, file = paste0(output_file_name, "_res_", data_index, "_", meta_method, ".tsv"),
+                  sep = "\t", row.names = FALSE, col.names = TRUE, quote = FALSE)
+      
+    } else if (meta_method == "Fisher") {
+      result_list <- run_batch_method_simple(batch_data_list, selected_method_func, normalization)
+      method_res <- meta_combine_p(result_list = result_list, sample_size = sample_sizes, method = "Fisher")
+      write.table(method_res, file = paste0(output_file_name, "_res_", data_index, "_", meta_method, ".tsv"),
+                  sep = "\t", row.names = FALSE, col.names = TRUE, quote = FALSE)
+      
+    } else if (meta_method == "not_used_meta") {
+      covariates_use <- add_unique(pooled_covariates, "Batch")
+      fix <- drop_covariates_to_full_rank_minimal(
+        meta = data$metadata,
+        covariates = covariates_use,
+        protect = "Batch",
+        always_keep = "Group",
+        max_drop = minimal_max_drop,
+        allow_drop_protect = minimal_allow_drop_batch,
+        verbose = TRUE,
+        label = "not_used_meta"
+      )
+      covariates_use2 <- fix$covariates
+      
+      method_res <- selected_method_func(data, covariates_use2, normalization)
+      write.table(method_res, file = paste0(output_file_name, "_res_", data_index, "_no_meta.tsv"),
+                  sep = "\t", row.names = FALSE, col.names = TRUE, quote = FALSE)
     }
   }
-  
 }
+
