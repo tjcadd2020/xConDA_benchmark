@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from sklearn.metrics import roc_auc_score,precision_recall_curve,auc
+from sklearn.metrics import roc_auc_score,precision_recall_curve,auc,matthews_corrcoef,f1_score
 
 ###建立灵敏度评估函数
 def Sensitivity_evaluation(result,ground_truth,sig_col_name,pvalue,metadata_datum):
@@ -211,7 +211,33 @@ def F1_evaluation(result,ground_truth,sig_col_name,pvalue,metadata_datum):
         F1 = (2*sensitivity*precision)/(sensitivity+precision)
         return F1
 
+def MCC_evaluation(result,ground_truth,sig_col_name,pvalue,metadata_datum):
+    if 'metadata' in result.columns:
+        result = result[result['metadata']=='Group']
+    result.loc[:, sig_col_name] = result[sig_col_name].fillna(1)
+    if result.empty:
+        return 0.0
+    else:
+        pred_label = (result[sig_col_name] < pvalue).astype(int).tolist()
+        #pred_probability = [pred_probability[i] if result.iloc[i,1]!=0 else 0 for i in range(len(pred_probability))]
+        ground_truth_feature = ground_truth[(ground_truth['metadata_datum'] == metadata_datum) & (ground_truth['effect_size'].abs() >= 1)]['feature_spiked']
+        label = [1 if i in ground_truth_feature.values.tolist() else 0 for i in result['Feature']]
+        mcc = matthews_corrcoef(label,pred_label)
+        return mcc
 
+def macroF1_evaluation(result,ground_truth,sig_col_name,pvalue,metadata_datum):
+    if 'metadata' in result.columns:
+        result = result[result['metadata']=='Group']
+    result.loc[:, sig_col_name] = result[sig_col_name].fillna(1)
+    if result.empty:
+        return 0.0
+    else:
+        pred_label = (result[sig_col_name] < pvalue).astype(int).tolist()
+        #pred_probability = [pred_probability[i] if result.iloc[i,1]!=0 else 0 for i in range(len(pred_probability))]
+        ground_truth_feature = ground_truth[(ground_truth['metadata_datum'] == metadata_datum) & (ground_truth['effect_size'].abs() >= 1)]['feature_spiked']
+        label = [1 if i in ground_truth_feature.values.tolist() else 0 for i in result['Feature']]
+        macrof1 = f1_score(label,pred_label,average='macro')
+        return macrof1
 
 
 def evaluation(result,ground_truth,sig_col_name,pvalue,metadata_datum):
@@ -224,8 +250,13 @@ def evaluation(result,ground_truth,sig_col_name,pvalue,metadata_datum):
     Precision = Precision_evaluation(result,ground_truth,sig_col_name,pvalue,metadata_datum)
     AUPR = AUPRC_evaluation(result,ground_truth,sig_col_name,metadata_datum)
     F1 = F1_evaluation(result,ground_truth,sig_col_name,pvalue,metadata_datum)
-
+    
     return FPR,Specificity,Sensitivity,Accuracy,AUC,Precision,FDR,AUPR,F1
+
+def evaluation2(result,ground_truth,sig_col_name,pvalue,metadata_datum):
+    MCC = MCC_evaluation(result,ground_truth,sig_col_name,pvalue,metadata_datum)
+    macroF1 = macroF1_evaluation(result,ground_truth,sig_col_name,pvalue,metadata_datum)
+    return MCC,macroF1
 
 
 
