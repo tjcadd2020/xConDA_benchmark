@@ -1,5 +1,4 @@
 ###生成具有批次效应的数据
-#批次效应大于疾病主效应（异质性强）
 library(SparseDOSSA2)
 #不指定ground-truth,不对ground-truth进行生成
 sample_num = 10000
@@ -21,13 +20,16 @@ Ca1 = sapply(Group, function(x) {
     sample(c(0, 1), 1, prob = c(0.6, 0.4))
   }
 })
-Batch = sapply(Group, function(x) {
-  num = if (x == 0) {
-    sample(c(1, 2, 3), 1, prob = c(0.35, 0.4, 0.25))  # 组别 0 的批次概率分布
+Batch <- sapply(Group, function(x) {
+  if (x == 0) {
+    # Group = 0 时的批次分布
+    sample(c("A", "B", "C", "D", "E"), 1,
+           prob = c(0.08, 0.18, 0.34, 0.25, 0.15))
   } else {
-    sample(c(1, 2, 3), 1, prob = c(0.4, 0.27, 0.33))  # 组别 1 的批次概率分布
+    # Group = 1 时的批次分布
+    sample(c("A", "B", "C", "D", "E"), 1,
+           prob = c(0.20, 0.10, 0.15, 0.30, 0.25))
   }
-  c("A", "B", "C")[num]  # 将数字转换为字母
 })
 
 Batch = as.factor(Batch)
@@ -47,6 +49,9 @@ spike_metadata$effect_size[spike_metadata$metadata_datum != 1] <- 2
 spike_metadata$effect_size[spike_metadata$metadata_datum == 5] <- 9
 spike_metadata$effect_size[spike_metadata$metadata_datum == 6] <- 10
 spike_metadata$effect_size[spike_metadata$metadata_datum == 7] <- 7
+spike_metadata$effect_size[spike_metadata$metadata_datum == 8] <- 8
+spike_metadata$effect_size[spike_metadata$metadata_datum == 9] <- 9
+
 IBD_simulation_for_meta_high_he <- SparseDOSSA2(template = "IBD", 
                                                 n_sample = sample_num, 
                                                 new_features = TRUE,n_feature = 1000,median_read_depth = 3000000,spike_metadata = spike_metadata,
@@ -54,14 +59,14 @@ IBD_simulation_for_meta_high_he <- SparseDOSSA2(template = "IBD",
                                                 verbose = TRUE)
 simulated_data_for_meta_high_he <- IBD_simulation_for_meta_high_he$simulated_data
 simulated_data_for_meta_high_he <- simulated_data_for_meta_high_he[which((rowSums(simulated_data_for_meta_high_he!=0)/sample_num)>0.1),]
-simulated_data_for_meta_high_he <- simulated_data_for_meta_high_he[,which(colSums(simulated_data_for_meta_high_he!=0)>0.1)]
+simulated_data_for_meta_high_he <- simulated_data_for_meta_high_he[,which(colSums(simulated_data_for_meta_high_he!=0)>10)]
 ground_truth_for_meta_high_he <- extract_ground_truth(IBD_simulation_for_meta_high_he,simulated_data_for_meta_high_he)
 spike_metadata$effect_size[spike_metadata$metadata_datum != 1] <- 2
 
 
 IBD_simulation_for_meta_high_he$spike_metadata$metadata_matrix <- as.data.frame(IBD_simulation_for_meta_high_he$spike_metadata$metadata_matrix)
-
 IBD_simulation_for_meta_high_he$spike_metadata$metadata_matrix$Batch<-Batch
+IBD_simulation_for_meta_high_he$spike_metadata$metadata_matrix <- IBD_simulation_for_meta_high_he$spike_metadata$metadata_matrix[colnames(simulated_data_for_meta_high_he),]
 
 
 ##绝对丰度转化相对丰度函数
