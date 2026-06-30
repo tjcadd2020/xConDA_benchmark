@@ -758,7 +758,7 @@ LM_interaction_analysis<-function(simulated_data_all,covariates=NULL,normalizati
     colnames(temp_data)[1]<-'Feature'
     lm_inter <- lm(as.formula(formula_str),data = temp_data)
     # 获取以 "Group" 开头的系数
-    group_coeffs <- grep("^Group", rownames(summary(lm_inter)$coefficients), value = TRUE)
+    group_coeffs <- grep("^Group", rownames(summary(lm_inter)$coefficients), value = TRUE)[1]
     if (length(group_coeffs) > 0) {
       pval <- summary(lm_inter)$coefficients[group_coeffs,'Pr(>|t|)']
       estimate_effect <- summary(lm_inter)$coefficients[group_coeffs,'Estimate']
