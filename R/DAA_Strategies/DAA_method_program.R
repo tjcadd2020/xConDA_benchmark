@@ -4,9 +4,9 @@ Corncob_analysis <- function(simulated_data_all, covariates=NULL, normalization,
 ){
   library(corncob)
   
-  # ---- 硬切断依赖：callr（跨平台、真正 kill 子进程）----
+  
   if(!requireNamespace("callr", quietly = TRUE)){
-    stop("需要安装 callr 才能硬切断：install.packages('callr')")
+    stop("需要安装 callr")
   }
   
   simulated_data <- data_normalization(simulated_data_all, normalization = normalization)
@@ -22,7 +22,7 @@ Corncob_analysis <- function(simulated_data_all, covariates=NULL, normalization,
   
   M_vec <- colSums(t(simulated_data_all$simulated_data_abs))  # 长度=样本数
   
-  # 子进程里执行的函数（必须是“自包含”的）
+  
   fit_one <- function(formula_str, phi_str, one_feature_data){
     library(corncob)
     
@@ -58,7 +58,7 @@ Corncob_analysis <- function(simulated_data_all, covariates=NULL, normalization,
       }
     }
     
-    # ---- 硬切断：超时会杀掉子进程 ----
+    
     result <- tryCatch({
       callr::r(
         func = fit_one,
