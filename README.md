@@ -4,8 +4,6 @@
 
 xConDA benchmarks confounder-aware microbiome DAA strategies and translates benchmark evidence into objective-guided strategy selection, execution, and reproducible reporting.
 
-![xConDA workflow](imgs/Study_design.png)
-
 ## Introduction
 
 Differential abundance analysis (DAA) is central to microbiome research, but its reliability can be strongly affected by confounding, preprocessing choices, statistical modeling assumptions, and study design. Despite the widespread use of covariate-adjusted DAA methods, practical guidance remains limited for selecting appropriate confounder-aware strategies across different microbiome analysis scenarios.
@@ -37,8 +35,6 @@ xConDA_benchmark/
 │   ├── Reference-based_evaluation/       # Reference-based biological signal recovery analyses
 │   ├── Simulation-based_accuracy_evaluation/ # Simulation accuracy ranking and evaluation scripts
 │   └── Stability_performance_evaluation/ # Perturbation stability evaluation scripts
-├── imgs/                                 # README and workflow images
-│   └── Study_design.png
 ├── README.md
 └── LICENSE
 ```
@@ -92,15 +88,7 @@ The benchmark was run with the following software versions.
 
 ## Data availability
 
-The simulated datasets, differential abundance analysis results, and benchmark evaluation outputs will be made available through Zenodo. The DOI and access link will be updated upon final release.
-
 ## Citation
-
-If you use xConDA or the benchmark results, please cite:
-
-Zhu et al. Benchmarking confounder-aware differential abundance strategies in microbiome data. Manuscript in revision.
-
-This section will be updated with the final citation after publication.
 
 ## License
 
