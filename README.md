@@ -1,26 +1,62 @@
 # Benchmarking Confounder-aware Differential Abundance (xConDA) Methods in Microbiome Data
 
 ## Workflow
-<!-- <img src="imgs/Study_design.png" width="600" alt="Study overview"> -->
+
+xConDA benchmarks confounder-aware microbiome DAA strategies and translates benchmark evidence into objective-guided strategy selection, execution, and reproducible reporting.
+
+![xConDA workflow](imgs/Study_design.png)
 
 ## Introduction
-We present a large-scale benchmark of **72 confounder-aware differential abundance analysis (DAA) strategies**, assembled from six input schemes (five normalization approaches plus raw counts) and 14 statistical models. 
 
-## Software versions
+Differential abundance analysis (DAA) is central to microbiome research, but its reliability can be strongly affected by confounding, preprocessing choices, statistical modeling assumptions, and study design. Despite the widespread use of covariate-adjusted DAA methods, practical guidance remains limited for selecting appropriate confounder-aware strategies across different microbiome analysis scenarios.
+
+Here, we present **xConDA**, a strategy-level benchmark and executable resource for confounder-aware microbiome DAA in both single- and multi-cohort settings. We evaluated **72 single-cohort DAA strategies**, each defined by pairing an input preprocessing scheme with a DAA statistical model, across simulation-based accuracy, reference-based biological signal recovery, within-dataset consistency, and perturbation stability. We further evaluated **63 multi-cohort strategies** by integrating benchmark-prioritized single-cohort strategies with meta-analysis and mega-analysis frameworks.
+
+The benchmark shows that no single strategy is uniformly optimal across all evaluation dimensions. Instead, strategy choice should be guided by the analytical objective, including high-confidence inference, balanced default analysis, discovery-oriented signal recovery, and reproducibility-focused analysis. The prioritized strategies are implemented in xConDA to support scenario-aware strategy selection, execution, and reporting for confounder-adjusted microbiome DAA workflows.
+
+## Key features
+
+- Strategy-level benchmark of 72 single-cohort and 63 multi-cohort microbiome DAA strategies.
+- Evaluation across simulation accuracy, biological signal recovery, within-dataset consistency, and perturbation stability.
+- Objective-guided recommendations for high-confidence, balanced, discovery-oriented, and reproducibility-focused analyses.
+- Assessment of covariate adjustment under confounding, preprocessing variation, and study design perturbations.
+- Executable xConDA workflows for scenario-aware selection and implementation of confounder-adjusted DAA strategies.
+- Reproducible code and benchmark resources for transparent microbiome DAA evaluation.
+
+## Repository structure
+
+```text
+xConDA_benchmark/
+├── R/                                    # R scripts for DAA strategy execution and supporting analysis functions
+│   ├── DAA_Strategies/                   # Single-cohort DAA methods and preprocessing strategies
+│   ├── Meta_framework/                   # Multi-cohort meta-analysis and mega-analysis framework functions
+│   ├── Simulation_generating/            # Simulation data generation utilities
+│   └── statistics/                       # Shared statistical filtering and helper functions
+├── src/                                  # Source scripts for benchmark evaluation and summary metrics
+│   ├── Consistency_evaluation/           # Within-dataset and multi-cohort consistency evaluations
+│   ├── Reference-based_evaluation/       # Reference-based biological signal recovery analyses
+│   ├── Simulation-based_accuracy_evaluation/ # Simulation accuracy ranking and evaluation scripts
+│   └── Stability_performance_evaluation/ # Perturbation stability evaluation scripts
+├── imgs/                                 # README and workflow images
+│   └── Study_design.png
+├── README.md
+└── LICENSE
+```
+
+## Software environment
 
 The benchmark was run with the following software versions.
 
 | Software | Version |
-| --- | --- |
-| R | 4.3.1 |
-| Python | 3.8.18 |
+| -------- | ------- |
+| R        | 4.3.1   |
+| Python   | 3.8.18  |
 
-## R package versions
-
-The following versions correspond to R packages that are explicitly loaded or referenced in the benchmark scripts and were available in the recorded analysis environment.
+<details>
+<summary>R package versions</summary>
 
 | Package | Version |
-| --- | --- |
+| ------- | ------- |
 | ALDEx2 | 1.34.0 |
 | ANCOMBC | 2.4.0 |
 | coin | 1.4-3 |
@@ -51,12 +87,21 @@ The following versions correspond to R packages that are explicitly loaded or re
 | tidyverse | 2.0.0 |
 | TreeSummarizedExperiment | 2.10.0 |
 | VTwins | 0.1.0 |
-<!-- 
-- We systematically evaluate precision and sensitivity to identify **top performers** across 250 simulated scenarios.We then validate these strategies on three real-world datasets with approximate ground truth and assess cross-dataset consistency in 36 metagenomic datasets. We further probe robustness to sample size, prevalence, feature-effect magnitude, and the number, type, and strength of confounders.
-- Beyond single-cohort evaluation, we further integrate the selected strategies with meta- or mega-analysis frameworks, evaluating both simulated batch-affected settings and real cohorts to recommend effective, **batch-robust DAA pipelines**.
 
-We also provided **a DAA strategy benchmarking pipeline** that helps researchers choose an optimal strategy and integration framework for their datasets, and then execute the selected methods end to end to obtain robust differential microbes. 
+</details>
 
-* We provide a step-by-step **tutorial** with sample data for quick, reproducible use. 
-* The pipeline is also available on the **xConDA** webserver.
--->
+## Data availability
+
+The simulated datasets, differential abundance analysis results, and benchmark evaluation outputs will be made available through Zenodo. The DOI and access link will be updated upon final release.
+
+## Citation
+
+If you use xConDA or the benchmark results, please cite:
+
+Zhu et al. Benchmarking confounder-aware differential abundance strategies in microbiome data. Manuscript in revision.
+
+This section will be updated with the final citation after publication.
+
+## License
+
+This project is released under the MIT License.
