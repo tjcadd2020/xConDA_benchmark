@@ -13,6 +13,7 @@ The following versions correspond to R packages that are explicitly loaded or re
 | Package | Version |
 | --- | --- |
 | ALDEx2 | 1.34.0 |
+| ANCOMBC | 2.4.0 |
 | coin | 1.4-3 |
 | compositions | 2.0-8 |
 | corncob | 0.4.1 |
@@ -24,15 +25,22 @@ The following versions correspond to R packages that are explicitly loaded or re
 | GUniFrac | 1.8 |
 | limma | 3.58.1 |
 | lmerTest | 3.1-3 |
+| logging | 0.10.108 |
 | Maaslin2 | 1.16.0 |
+| metafor | 4.8.0 |
 | metagenomeSeq | 1.43.0 |
+| metap | 1.11 |
 | MuMIn | 1.48.4 |
+| paletteer | 1.6.0 |
 | patchwork | 1.3.0 |
+| pheatmap | 1.0.12 |
 | pracma | 2.4.4 |
 | purrr | 1.0.2 |
+| SparseDOSSA2 | 0.99.2 |
 | stringr | 1.5.1 |
 | tibble | 3.2.1 |
 | tidyverse | 2.0.0 |
+| TreeSummarizedExperiment | 2.10.0 |
 | VTwins | 0.1.0 |
 <!-- 
 - We systematically evaluate precision and sensitivity to identify **top performers** across 250 simulated scenarios.We then validate these strategies on three real-world datasets with approximate ground truth and assess cross-dataset consistency in 36 metagenomic datasets. We further probe robustness to sample size, prevalence, feature-effect magnitude, and the number, type, and strength of confounders.
@@ -43,5 +51,4 @@ We also provided **a DAA strategy benchmarking pipeline** that helps researchers
 * We provide a step-by-step **tutorial** with sample data for quick, reproducible use. 
 * The pipeline is also available on the **xConDA** webserver.
 -->
-
 
