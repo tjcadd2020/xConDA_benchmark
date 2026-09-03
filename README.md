@@ -19,6 +19,7 @@ The benchmark shows that no single strategy is uniformly optimal across all eval
 - Objective-guided recommendations for high-confidence, balanced, discovery-oriented, and reproducibility-focused analyses.
 - Assessment of covariate adjustment under confounding, preprocessing variation, and study design perturbations.
 - Executable xConDA workflows for scenario-aware selection and implementation of confounder-adjusted DAA strategies.
+- A prebuilt Docker image for convenient access to a reference R environment.
 - Reproducible code and benchmark resources for transparent microbiome DAA evaluation.
 
 ## Repository structure
@@ -41,7 +42,7 @@ xConDA_benchmark/
 
 ## Software environment
 
-The benchmark was run with the following software versions.
+The benchmark analyses were run with the following software versions.
 
 | Software | Version |
 | -------- | ------- |
@@ -85,6 +86,37 @@ The benchmark was run with the following software versions.
 | VTwins | 0.1.0 |
 
 </details>
+
+## Reference Docker environment
+
+A prebuilt Docker image is available as an optional reference environment for running the R scripts in this repository:
+
+- Image: [`zhuxinyue/xconda_benchmark:latest`](https://hub.docker.com/r/zhuxinyue/xconda_benchmark)
+- Platform: `linux/amd64`
+- Image size: approximately 2.02 GB
+- R version: 4.3.3
+- Installed R packages: 408
+- Verified key packages: ANCOMBC, DESeq2, edgeR, Maaslin2, and vegan
+
+The benchmark's recorded analysis environment remains R 4.3.1, as listed above. The Docker image provides a closely aligned R 4.3.3 environment for convenient reuse and reproducibility.
+
+Pull the image and start an interactive container:
+
+```bash
+docker pull zhuxinyue/xconda_benchmark:latest
+docker run --rm -it zhuxinyue/xconda_benchmark:latest
+```
+
+Run an R script from the current repository directory:
+
+```bash
+docker run --rm \
+  -v "$PWD:/workspace" \
+  zhuxinyue/xconda_benchmark:latest \
+  Rscript /workspace/your-script.R
+```
+
+On an ARM64 host, add `--platform linux/amd64` to the `docker run` command.
 
 ## Data availability
 
