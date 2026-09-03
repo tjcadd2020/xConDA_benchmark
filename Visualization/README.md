@@ -1,6 +1,6 @@
 # Main-figure visualization code
 
-This directory contains panel-level R code corresponding approximately to the main figures in `Manuscript.docx`. Several final panels were assembled or refined in Adobe Illustrator, so the scripts preserve the main data processing and visual structure without reproducing every layout adjustment.
+This directory contains panel-level R code corresponding approximately to the main figures in `Manuscript.docx`.
 
 ## Included panels
 
@@ -11,12 +11,6 @@ This directory contains panel-level R code corresponding approximately to the ma
 | Fig. 4 | a-d | Within-dataset consistency, dual-criterion prioritization, perturbation robustness, and challenging-setting performance |
 | Fig. 5 | a and c | Integrated single-cohort performance profile and Crohn's disease case study |
 | Fig. 6 | b, c, and e | Multi-cohort accuracy-consistency landscape, top-strategy profiles, and MMUPHin comparison |
-
-## Excluded panels and assembly notes
-
-- Fig. 3a is a schematic assembled outside R.
-- Fig. 5b, Fig. 6a, and Fig. 6d are intentionally excluded.
-- Final multi-panel composition, lettering, and spacing were adjusted in Adobe Illustrator.
 
 ## Data inputs
 
