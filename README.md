@@ -19,9 +19,7 @@ The benchmark shows that no single strategy is uniformly optimal across all eval
 - Strategy-level benchmark of 72 single-cohort and 63 multi-cohort microbiome DAA strategies.
 - Evaluation across simulation accuracy, biological signal recovery, within-dataset consistency, and perturbation stability.
 - Objective-guided recommendations for high-confidence, balanced, discovery-oriented, and reproducibility-focused analyses.
-- Assessment of covariate adjustment under confounding, preprocessing variation, and study design perturbations.
 - Executable xConDA workflows for scenario-aware selection and implementation of confounder-adjusted DAA strategies.
-- A prebuilt Docker image containing the runtime environment for the repository.
 - Reproducible code and benchmark resources for transparent microbiome DAA evaluation.
 
 ## Repository structure
@@ -38,11 +36,14 @@ xConDA_benchmark/
 │   ├── Reference-based_evaluation/       # Reference-based biological signal recovery analyses
 │   ├── Simulation-based_accuracy_evaluation/ # Simulation accuracy ranking and evaluation scripts
 │   └── Stability_performance_evaluation/ # Perturbation stability evaluation scripts
+├── Visualization/                         # Panel-level code for main Figures 2-6
 ├── imgs/                                  # README and workflow images
 │   └── Study_design.png                   # xConDA benchmark workflow
 ├── README.md
 └── LICENSE
 ```
+
+Plotting code for the main manuscript figures is organized by figure and panel in [`Visualization`](Visualization/README.md).
 
 ## Software environment
 
