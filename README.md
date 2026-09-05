@@ -12,7 +12,7 @@ Differential abundance analysis (DAA) is central to microbiome research, but its
 
 Here, we present **xConDA**, a strategy-level benchmark and executable resource for confounder-aware microbiome DAA in both single- and multi-cohort settings. We evaluated **72 single-cohort DAA strategies**, each defined by pairing an input preprocessing scheme with a DAA statistical model, across simulation-based accuracy, reference-based biological signal recovery, within-dataset consistency, and perturbation stability. We further evaluated **63 multi-cohort strategies** by integrating benchmark-prioritized single-cohort strategies with meta-analysis and mega-analysis frameworks.
 
-The benchmark shows that no single strategy is uniformly optimal across all evaluation dimensions. Instead, strategy choice should be guided by the analytical objective, including high-confidence inference, balanced default analysis, discovery-oriented signal recovery, and reproducibility-focused analysis. The prioritized strategies are implemented in xConDA to support scenario-aware strategy selection, execution, and reporting for confounder-adjusted microbiome DAA workflows.
+The benchmark shows that no single strategy is uniformly optimal across all evaluation dimensions. Instead, strategy choice should be guided by the analytical objective, including high-confidence inference, balanced default analysis, discovery-oriented signal recovery, and reproducibility-focused analysis. The prioritized strategies are implemented in xConDA (https://www.biosino.org/xconda/) to support scenario-aware strategy selection, execution, and reporting for confounder-adjusted microbiome DAA workflows.
 
 ## Key features
 
