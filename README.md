@@ -114,6 +114,10 @@ docker run --rm \
 
 ## Data availability
 
+All real datasets used in this study were obtained from publicly available resources, including the Bio-Med Big Data Center project [OEP004514](https://www.biosino.org/node/project/detail/OEP004514) and the Bioconductor packages [curatedMetagenomicData](https://bioconductor.org/packages/curatedMetagenomicData/), [HMP16SData](https://bioconductor.org/packages/HMP16SData/), and [MicrobiomeBenchmarkData](https://bioconductor.org/packages/MicrobiomeBenchmarkData/).
+
+Simulated datasets and the complete strategy-level differential abundance analysis outputs generated from all simulated and real datasets are deposited in [Zenodo](https://doi.org/10.5281/zenodo.19883889). Processed performance metrics used for method evaluation are provided in the manuscript's Supplementary Tables.
+
 ## Citation
 
 ## License
