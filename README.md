@@ -120,6 +120,10 @@ Simulated datasets and the complete strategy-level differential abundance analys
 
 ## Citation
 
+If you use xConDA or the benchmark resources, please cite:
+
+Zhu, X., Liu, L., Cao, Y., Sheng, Y., Yang, B., Wu, D., Zhang, G., Zhao, G., Jiao, N., & Zhu, R. (2026). A multidimensional benchmark of confounder-aware differential abundance strategies for single- and multi-cohort microbiome studies. *bioRxiv*. https://doi.org/10.64898/2026.10.29.762742
+
 ## License
 
 This project is released under the MIT License.
